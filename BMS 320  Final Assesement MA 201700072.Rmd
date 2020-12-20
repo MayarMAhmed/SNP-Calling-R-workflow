@@ -1,0 +1,209 @@
+---
+title: "BMS 320: Final Assesement-MA-201700072"
+output: BMS 320: Final Assesement-MA-201700072_notebook
+---
+
+
+```{r}
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# BiocManager::install(version='devel')
+# BiocManager::install("variants")
+library(VariantAnnotation)
+library(cgdv17)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(PolyPhen.Hsapiens.dbSNP131)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+```
+
+
+```{r}
+getwd()
+#BiocManager::install("TxDb.Hsapiens.UCSC.hg38.knownGene")
+BiocManager::install("BSgenome.Hsapiens.1000genomes.hs37d5")
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+```{r}
+file<-"homo_sapiens-chr16.vcf"
+vcf<-readVcfAsVRanges(file)
+#vcf
+header(vcf)
+hdr <- scanVcfHeader(file)
+hdr
+```
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+## ---- echo=FALSE, results="hide", warning=FALSE-------------------------------
+suppressPackageStartupMessages({
+library('variants')
+})
+
+## ---- eval=FALSE--------------------------------------------------------------
+#  library(VariantAnnotation)
+#  library(cgdv17)
+#  library(org.Hs.eg.db)
+#  library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+#  library(BSgenome.Hsapiens.UCSC.hg19)
+#  library(PolyPhen.Hsapiens.dbSNP131)
+# library(BSgenome.Hsapiens.1000genomes.hs37d5)
+## ---- eval=FALSE--------------------------------------------------------------
+#  if (!"BiocManager" %in% rownames(installed.packages()))
+#       install.packages("BiocManager")
+#  BiocManager::install("mypackage")
+
+## ---- eval=FALSE--------------------------------------------------------------
+#  browseVignettes("cgdv17")
+
+## -----------------------------------------------------------------------------
+#file <- system.file("vcf", "NA06985_17.vcf.gz", package = "cgdv17")
+# file<-"ALL.chr13.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
+#file<-"homo_sapiens-chr16.vcf"
+file<-"ALL.wgs.integrated_phase1_release_v3_coding_annotation.20101123.snps_indels.sites.vcf.gz"
+## -----------------------------------------------------------------------------
+hdr <- scanVcfHeader(file)
+hdr
+info(hdr)
+
+fixed(hdr)
+
+geno(hdr)
+
+## -----------------------------------------------------------------------------
+meta(hdr)
+
+## -----------------------------------------------------------------------------
+## get entrez ids from gene symbols
+genesym <- c("TRPV1", "TRPV2", "TRPV3", "BRCA1","BRCA2")
+geneid <- select(org.Hs.eg.db, keys=genesym, keytype="SYMBOL",
+		 columns="ENTREZID")
+geneid
+
+
+## -----------------------------------------------------------------------------
+#txdb <-TxDb.Hsapiens.UCSC.hg38.knownGene
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+
+#txdb<-BSgenome.Hsapiens.1000genomes.hs37d5
+txdb
+seqlevels(txdb)
+## -----------------------------------------------------------------------------
+
+txdb <- renameSeqlevels(txdb, gsub("chr", "", seqlevels(txdb)))
+txdb <- keepSeqlevels(txdb, c("17","13"))
+
+## -----------------------------------------------------------------------------
+txbygene = transcriptsBy(txdb, "gene")
+
+## -----------------------------------------------------------------------------
+gnrng <- unlist(range(txbygene[geneid$ENTREZID]), use.names=FALSE)
+names(gnrng) <- geneid$SYMBOL
+
+## -----------------------------------------------------------------------------
+param <- ScanVcfParam(which = gnrng, info = "DP", geno = c("GT"))
+param
+
+## Extract the TRPV1 ,TRPV2 TRPV3 BRCA1 BRAC2 ranges from the VCF file
+vcf <- readVcf(file, "hg19", param)
+
+## Inspect the VCF object with the 'fixed', 'info' and 'geno' accessors
+vcf
+info(vcf)
+head(fixed(vcf))
+
+geno(vcf)
+
+## ------------------------------------------------------------------
+#Use the 'region' argument to define the region of interest. 
+cds <- locateVariants(vcf, txdb, CodingVariants())
+cds
+five <- locateVariants(vcf, txdb, FiveUTRVariants())
+five
+splice <- locateVariants(vcf, txdb, SpliceSiteVariants())
+splice
+intron <- locateVariants(vcf, txdb, IntronVariants())
+intron
+## -----------------------------------------------------------------------------
+#Extract all variants related to all gene funvtion location 
+all <- locateVariants(vcf, txdb, AllVariants())
+ all
+
+## -----------------------------------------------------------------------------
+## Did any variants match more than one gene?
+table(sapply(split(mcols(all)$GENEID, mcols(all)$QUERYID),
+      function(x) length(unique(x)) > 1))
+
+  ## Summarize the number of variants by gene:
+idx <- sapply(split(mcols(all)$QUERYID, mcols(all)$GENEID), unique)
+sapply(idx, length)
+
+## Summarize variant location by gene:
+sapply(names(idx),
+    function(nm) {
+	d <- all[mcols(all)$GENEID %in% nm, c("QUERYID", "LOCATION")]
+	table(mcols(d)$LOCATION[duplicated(d) == FALSE])
+    })
+
+## -----------------------------------------------------------------------------
+seqlevelsStyle(vcf) <- "UCSC"
+seqlevelsStyle(txdb) <- "UCSC"
+aa <- predictCoding(vcf, txdb, Hsapiens)
+aa
+## -----------------------------------------------------------------------------
+## Did any variants match more than one gene?
+table(sapply(split(mcols(aa)$GENEID, mcols(aa)$QUERYID),
+	function(x) length(unique(x)) > 1))
+
+## Summarize the number of variants by gene:
+idx <- sapply(split(mcols(aa)$QUERYID, mcols(aa)$GENEID, drop=TRUE), unique)
+sapply(idx, length)
+
+## Summarize variant consequence by gene:
+sapply(names(idx),
+       function(nm) {
+	   d <- aa[mcols(aa)$GENEID %in% nm, c("QUERYID","CONSEQUENCE")]
+	   table(mcols(d)$CONSEQUENCE[duplicated(d) == FALSE])
+      })
+```
+
+
+
+
+
+
+
+```{r}
+
+ head(aa, 3)
+
+  ## Exon-centric or cDNA locations:
+  exonsbytx <- exonsBy(txdb, "tx")
+exonsbytx
+  cDNA <- mapToTranscripts(aa, exonsbytx)
+  cDNA
+  mcols(cDNA)$TXID <- names(exonsbytx)[mcols(cDNA)$transcriptsHits]
+  cDNA <- cDNA[mcols(cDNA)$TXID == mcols(aa)$TXID[mcols(cDNA)$xHits]]
+cDNA
+  ## Make sure cDNA is parallel to coding1
+  stopifnot(identical(mcols(cDNA)$xHits, seq_along(aa)))
+
+  aa$cDNA <- ranges(cDNA)
+## ----eval=FALSE---------------------------------------------------------------
+#  browseVignettes(package="VariantAnnotation")
+
+## ----eval=FALSE---------------------------------------------------------------
+#  help.start()
+
+## -----------------------------------------------------------------------------
+#sessionInfo()
+
+```
+
