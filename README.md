@@ -20,7 +20,7 @@ This project provides an R-based workflow for identifying and analyzing Single N
   - Locate variants
   - Predict protein-level effects
 
-### 📈 Results Summary
+### Results Summary
 
 - **TRPV Genes**:
   - TRPV1: 51 SNPs (28 non-synonymous)
